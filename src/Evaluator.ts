@@ -10,8 +10,6 @@ import parseUserAgent from './utils/parseUserAgent';
 import StatsigFetcher from './utils/StatsigFetcher';
 import { sha256 } from 'js-sha256';
 
-const ip3country = require('ip3country');
-
 const CONDITION_SEGMENT_COUNT = 10 * 1000;
 const USER_BUCKET_COUNT = 1000;
 
@@ -46,6 +44,8 @@ export default class Evaluator {
 
   private initStrategyForIP3Country: InitStrategy;
 
+  private ip3country: typeof import('ip3country') | null = null;
+
   public constructor(
     fetcher: StatsigFetcher,
     options: ExplicitStatsigOptions,
@@ -61,17 +61,20 @@ export default class Evaluator {
   public async init(): Promise<void> {
     await this.store.init();
     try {
+      const ip3country = (await import('ip3country')).default;
+
       if (this.initStrategyForIP3Country === 'lazy') {
         setTimeout(async () => {
-          await ip3country.init();
+          ip3country.init();
+          this.ip3country = ip3country;
         }, 0);
       } else if (this.initStrategyForIP3Country !== 'none') {
-        await ip3country.init();
+        ip3country.init();
+        this.ip3country = ip3country;
       }
     } catch (err) {
       // Ignore: this is optional
     }
-    this.initialized = true;
   }
 
   public overrideGate(
@@ -829,14 +832,14 @@ export default class Evaluator {
   }
 
   public ip2country(ip: string | number): string | null {
-    if (!this.initialized) {
+    if (!this.ip3country) {
       return null;
     }
     try {
       if (typeof ip === 'string') {
-        return ip3country.lookupStr(ip);
+        return this.ip3country.lookupStr(ip);
       } else if (typeof ip === 'number') {
-        return ip3country.lookupNumeric(ip);
+        return this.ip3country.lookupNumeric(ip);
       }
     } catch (e) {
       // TODO: log
